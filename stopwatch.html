@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>스톱워치</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1d1f23; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #2563eb; --danger: #dc2626; --ok: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #181b21; --text: #f1f3f5; --muted: #9aa1ac;
+      --line: #2a2f38; --accent: #3b82f6; --danger: #ef4444; --ok: #22c55e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #6fd6ec 0%, #2a9fd6 35%, #12609e 70%, #0a3463 100%);
+    color: var(--text); overflow: hidden;
+    font-family: "Pretendard", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+    padding: 16px;
+  }
+  .card {
+    position: relative; z-index: 2;
+    width: 100%; max-width: 420px; background: color-mix(in srgb, var(--card) 82%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.4);
+    border-radius: 20px; padding: 32px 24px; box-shadow: 0 10px 40px rgba(0,30,60,.35);
+  }
+
+  /* 바닷속 배경 */
+  .ocean { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .rays {
+    position: absolute; inset: -20% -50% 30%;
+    background: repeating-linear-gradient(100deg, rgba(255,255,255,.13) 0 40px, transparent 40px 120px);
+    filter: blur(6px); transform-origin: top center;
+    animation: rays 8s ease-in-out infinite alternate;
+    mask-image: linear-gradient(#000, transparent);
+    -webkit-mask-image: linear-gradient(#000, transparent);
+  }
+  @keyframes rays { from { transform: skewX(-6deg); } to { transform: skewX(6deg); } }
+  .sand {
+    position: absolute; left: -5%; right: -5%; bottom: -40px; height: 110px;
+    background: radial-gradient(ellipse at 50% 0, #e9d39c, #c9a965 70%);
+    border-radius: 50% 50% 0 0 / 60px 60px 0 0;
+  }
+  .weed { position: absolute; bottom: 30px; transform-origin: bottom center; animation: sway 3s ease-in-out infinite alternate; }
+  @keyframes sway { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+  .bubble {
+    position: absolute; bottom: -20px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,.7);
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.8) 0 15%, rgba(255,255,255,.1) 40%);
+    animation: rise linear forwards;
+  }
+  @keyframes rise {
+    0%   { transform: translate(0, 0); opacity: 0; }
+    10%  { opacity: 1; }
+    50%  { transform: translate(14px, -50vh); }
+    100% { transform: translate(-6px, -105vh); opacity: .8; }
+  }
+  .fish { position: absolute; font-size: 28px; animation: swim linear infinite; }
+  @keyframes swim { from { transform: translateX(calc(100vw + 80px)); } to { transform: translateX(-80px); } }
+  .time {
+    font-variant-numeric: tabular-nums; font-size: clamp(44px, 14vw, 64px);
+    font-weight: 300; text-align: center; letter-spacing: 1px; margin: 8px 0 28px;
+  }
+  .time .ms { font-size: .55em; color: var(--muted); }
+  .buttons { display: flex; gap: 12px; justify-content: center; }
+  button {
+    flex: 1; max-width: 140px; padding: 14px 0; font-size: 16px; font-weight: 600;
+    border: none; border-radius: 999px; cursor: pointer; color: #fff; transition: opacity .15s, transform .05s;
+  }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .35; cursor: default; }
+  #startBtn { background: var(--ok); }
+  #startBtn.running { background: var(--danger); }
+  #lapBtn { background: var(--muted); }
+  .hint { text-align: center; color: var(--muted); font-size: 12px; margin-top: 14px; }
+  ul { list-style: none; padding: 0; margin: 24px 0 0; max-height: 280px; overflow-y: auto; }
+  li {
+    display: flex; justify-content: space-between; padding: 10px 4px;
+    border-top: 1px solid var(--line); font-variant-numeric: tabular-nums;
+  }
+  li .label { color: var(--muted); }
+  li.best .split { color: var(--ok); }
+  li.worst .split { color: var(--danger); }
+  li .total { color: var(--muted); font-size: 13px; margin-left: 12px; }
+
+  /* 캐릭터 */
+  .stage { display: flex; justify-content: center; height: 150px; }
+  .dancer { width: 130px; height: 150px; }
+  .dancer svg { width: 100%; height: 100%; overflow: visible; }
+  .dancer.cheer { animation: cheer .6s ease-out; }
+  @keyframes cheer {
+    0%   { transform: translateY(0) rotate(0); }
+    40%  { transform: translateY(-28px) rotate(180deg); }
+    100% { transform: translateY(0) rotate(360deg); }
+  }
+  .note {
+    position: absolute; font-size: 18px; color: var(--accent); opacity: 0;
+    pointer-events: none; animation: note 1s ease-out forwards;
+  }
+  @keyframes note {
+    0%   { opacity: 0; transform: translate(0, 0) scale(.6); }
+    20%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx), -60px) scale(1.1); }
+  }
+  .stage-wrap { position: relative; }
+</style>
+</head>
+<body>
+  <div class="ocean" id="ocean">
+    <div class="rays"></div>
+    <div class="fish" style="top:18%; animation-duration:22s;">🐟</div>
+    <div class="fish" style="top:32%; animation-duration:30s; animation-delay:-12s; font-size:20px;">🐠</div>
+    <div class="fish" style="top:55%; animation-duration:26s; animation-delay:-5s; font-size:22px;">🐡</div>
+    <svg class="weed" style="left:4%; height:220px;" viewBox="0 0 60 220"><path d="M30 220 C10 180 50 150 28 110 C10 75 45 50 30 0" stroke="#2f9e5b" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M30 220 C45 190 15 170 38 140" stroke="#3bbb6c" stroke-width="9" fill="none" stroke-linecap="round"/></svg>
+    <svg class="weed" style="left:12%; height:150px; animation-delay:-1.2s;" viewBox="0 0 60 220"><path d="M30 220 C10 180 50 150 28 110 C10 75 45 50 30 0" stroke="#3bbb6c" stroke-width="12" fill="none" stroke-linecap="round"/></svg>
+    <svg class="weed" style="right:6%; height:240px; animation-delay:-.6s;" viewBox="0 0 60 220"><path d="M30 220 C50 180 10 150 32 110 C50 75 15 50 30 0" stroke="#2f9e5b" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M30 220 C15 190 45 165 22 135" stroke="#3bbb6c" stroke-width="9" fill="none" stroke-linecap="round"/></svg>
+    <svg class="weed" style="right:16%; height:130px; animation-delay:-2s;" viewBox="0 0 60 220"><path d="M30 220 C50 180 10 150 32 110 C50 75 15 50 30 0" stroke="#e36f8f" stroke-width="12" fill="none" stroke-linecap="round"/></svg>
+    <div class="sand"></div>
+  </div>
+  <div class="card">
+    <div class="stage-wrap" id="stageWrap">
+      <div class="stage">
+        <div class="dancer" id="dancer">
+          <svg viewBox="0 0 130 150" aria-label="한교동">
+            <ellipse id="shadow" cx="65" cy="144" rx="30" ry="5" fill="#000" opacity=".15"/>
+            <g id="hg" stroke="#1d3735" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+              <!-- 아래쪽 뭉게 발 -->
+              <g id="legL"><ellipse cx="50" cy="128" rx="10" ry="9" fill="#3fae9f"/></g>
+              <ellipse cx="65" cy="130" rx="9" ry="8" fill="#3fae9f"/>
+              <g id="legR"><ellipse cx="80" cy="128" rx="10" ry="9" fill="#3fae9f"/></g>
+              <!-- 몸통 -->
+              <path d="M43 80 Q38 92 42 102 Q38 112 42 124 L88 124 Q92 112 88 102 Q92 92 87 80 Z" fill="#3fae9f" stroke="none"/>
+              <path d="M43 80 Q38 92 42 102 Q38 112 42 124 M87 80 Q92 92 88 102 Q92 112 88 124" fill="none"/>
+              <!-- 비늘 -->
+              <path d="M49 96 q4 5 8 0 M61 96 q4 5 8 0 M73 96 q4 5 8 0 M55 108 q4 5 8 0 M67 108 q4 5 8 0" fill="none" stroke-width="2.5"/>
+              <!-- 팔 -->
+              <g id="armL"><rect x="35" y="88" width="10" height="20" rx="5" fill="#3fae9f"/></g>
+              <g id="armR"><rect x="85" y="88" width="10" height="20" rx="5" fill="#3fae9f"/></g>
+              <!-- 머리 지느러미 -->
+              <path d="M54 26 Q54 8 68 6 Q84 5 84 20 Q80 24 76 26 Z" fill="#3a8ed8"/>
+              <path d="M64 10 L66 24 M73 8 L73 24" fill="none" stroke-width="2"/>
+              <!-- 옆 지느러미 -->
+              <path d="M30 44 Q16 40 17 52 Q16 64 30 60 Z" fill="#3a8ed8"/>
+              <path d="M100 44 Q114 40 113 52 Q114 64 100 60 Z" fill="#3a8ed8"/>
+              <!-- 머리 -->
+              <path d="M27 54 Q26 22 65 22 Q104 22 103 54 Q103 84 65 84 Q27 84 27 54 Z" fill="#46b8a8"/>
+              <!-- 눈 -->
+              <g id="eyes">
+                <ellipse cx="51" cy="44" rx="11" ry="12" fill="#fff"/>
+                <ellipse cx="79" cy="44" rx="11" ry="12" fill="#fff"/>
+                <circle cx="53" cy="45" r="4.5" fill="#1d1f23" stroke="none"/>
+                <circle cx="77" cy="45" r="4.5" fill="#1d1f23" stroke="none"/>
+              </g>
+              <!-- 입술 -->
+              <g id="lips">
+                <path d="M34 66 Q65 54 96 66 Q100 72 93 76 Q65 86 37 76 Q30 72 34 66 Z" fill="#f2a5b8"/>
+                <path d="M36 70 Q65 64 94 70" fill="none" stroke-width="2.5"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="time" id="display">00:00<span class="ms">.00</span></div>
+    <div class="buttons">
+      <button id="lapBtn" disabled>랩</button>
+      <button id="startBtn">시작</button>
+    </div>
+    <div class="hint">Space: 시작/정지 · L: 랩 · R: 초기화</div>
+    <ul id="laps"></ul>
+  </div>
+
+<script>
+  const display = document.getElementById('display');
+  const startBtn = document.getElementById('startBtn');
+  const lapBtn = document.getElementById('lapBtn');
+  const lapList = document.getElementById('laps');
+
+  let running = false, startTime = 0, elapsed = 0, rafId = null;
+  let laps = [];        // 각 랩의 누적 시간(ms)
+
+  function format(ms) {
+    const totalCs = Math.floor(ms / 10);
+    const cs = totalCs % 100;
+    const s = Math.floor(totalCs / 100) % 60;
+    const m = Math.floor(totalCs / 6000) % 60;
+    const h = Math.floor(totalCs / 360000);
+    const pad = n => String(n).padStart(2, '0');
+    const main = (h ? h + ':' : '') + pad(m) + ':' + pad(s);
+    return { main, cs: '.' + pad(cs) };
+  }
+
+  function now() { return running ? elapsed + (performance.now() - startTime) : elapsed; }
+
+  // ── 한교동 춤: 스톱워치 시간에 박자를 맞춤 (0.5초 = 1박, 120BPM) ──
+  const BEAT = 500;
+  const $ = id => document.getElementById(id);
+  const hg = $('hg'), armL = $('armL'), armR = $('armR'), legL = $('legL'), legR = $('legR');
+  const lips = $('lips'), shadow = $('shadow'), dancer = $('dancer'), stageWrap = $('stageWrap');
+  let lastBeat = -1;
+
+  // 로봇 댄스 8박 동작 (aL/aR: 팔 각도, 양수=왼팔 위로 / 음수=오른팔 위로)
+  const ROBOT = [
+    { x: 0,   y: 0,  rot: 0,  aL: 0,   aR: 0,    lL: 0,  lR: 0,  sq: 1,    lip: 1   }, // 차렷
+    { x: -8,  y: 0,  rot: 0,  aL: 95,  aR: 0,    lL: -6, lR: 0,  sq: 1,    lip: 1.2 }, // 왼쪽 스텝 + 왼팔 수평
+    { x: -8,  y: 0,  rot: 0,  aL: 95,  aR: -95,  lL: 0,  lR: 0,  sq: 1,    lip: 1   }, // 양팔 수평
+    { x: 0,   y: 4,  rot: 0,  aL: 170, aR: -170, lL: 0,  lR: 0,  sq: 0.92, lip: 1.3 }, // 쪼그리며 만세
+    { x: 8,   y: 0,  rot: 0,  aL: 0,   aR: -95,  lL: 0,  lR: -6, sq: 1,    lip: 1   }, // 오른쪽 스텝 + 오른팔 수평
+    { x: 8,   y: 0,  rot: 12, aL: 45,  aR: -135, lL: 0,  lR: 0,  sq: 1,    lip: 1.2 }, // 오른쪽으로 기울며 대각선 팔
+    { x: 0,   y: 0,  rot: -12,aL: 135, aR: -45,  lL: 0,  lR: 0,  sq: 1,    lip: 1   }, // 왼쪽으로 기울며 반대 대각선
+    { x: 0,   y: -10,rot: 0,  aL: 95,  aR: -95,  lL: -4, lR: -4, sq: 1,    lip: 1.4 }, // 점프하며 로봇 포즈
+  ];
+
+  function dance(t) {
+    if (!running) {               // 정지 상태: 차렷 자세
+      hg.setAttribute('transform', '');
+      [armL, armR, legL, legR, lips].forEach(el => el.setAttribute('transform', ''));
+      shadow.setAttribute('rx', 30);
+      return;
+    }
+    // O2 Bubl 로봇 댄스: 박마다 다음 자세로 '딱' 끊어서 이동한 뒤 멈춤
+    const beat = Math.floor(t / BEAT);
+    const phase = (t % BEAT) / BEAT;
+    const prev = ROBOT[(beat + ROBOT.length - 1) % ROBOT.length];
+    const cur = ROBOT[beat % ROBOT.length];
+    const k = Math.min(1, phase / 0.18);                   // 앞 18% 동안만 움직이고 나머지는 정지
+    const e = k * k * (3 - 2 * k);
+    const lerp = key => prev[key] + (cur[key] - prev[key]) * e;
+    const jitter = phase < 0.25 ? Math.sin(phase * 120) * 0.8 * (1 - phase * 4) : 0;  // 기계식 떨림
+
+    const x = lerp('x'), y = lerp('y'), rot = lerp('rot'), sq = lerp('sq');
+    hg.setAttribute('transform',
+      `translate(${x + jitter} ${y}) rotate(${rot} 65 135) translate(65 135) scale(${2 - sq} ${sq}) translate(-65 -135)`);
+    armL.setAttribute('transform', `rotate(${lerp('aL')} 40 92)`);
+    armR.setAttribute('transform', `rotate(${lerp('aR')} 90 92)`);
+    legL.setAttribute('transform', `translate(0 ${lerp('lL')})`);
+    legR.setAttribute('transform', `translate(0 ${lerp('lR')})`);
+    lips.setAttribute('transform', `translate(65 70) scale(1 ${lerp('lip')}) translate(-65 -70)`);
+    shadow.setAttribute('rx', 30 + y * 0.5);
+
+    if (beat !== lastBeat) {      // 매초 음표 띄우기
+      if (lastBeat !== -1 && beat % 2 === 0) spawnNote();
+      lastBeat = beat;
+    }
+  }
+
+  function spawnNote() {
+    const n = document.createElement('span');
+    n.className = 'note';
+    n.textContent = Math.random() < .5 ? '♪' : '♫';
+    const left = Math.random() < .5;
+    n.style.left = `calc(50% ${left ? '-' : '+'} ${50 + Math.random() * 20}px)`;
+    n.style.top = '40px';
+    n.style.setProperty('--dx', (left ? -1 : 1) * (10 + Math.random() * 20) + 'px');
+    stageWrap.appendChild(n);
+    setTimeout(() => n.remove(), 1000);
+  }
+
+  function cheer() {
+    dancer.classList.remove('cheer');
+    void dancer.offsetWidth;      // 애니메이션 재시작
+    dancer.classList.add('cheer');
+  }
+
+  function render() {
+    const ms = now();
+    const t = format(ms);
+    display.innerHTML = t.main + '<span class="ms">' + t.cs + '</span>';
+    dance(ms);
+    if (running) rafId = requestAnimationFrame(render);
+  }
+
+  function renderLaps() {
+    const splits = laps.map((t, i) => t - (i ? laps[i - 1] : 0));
+    const min = Math.min(...splits), max = Math.max(...splits);
+    lapList.innerHTML = '';
+    for (let i = splits.length - 1; i >= 0; i--) {
+      const li = document.createElement('li');
+      if (splits.length > 1 && splits[i] === min) li.className = 'best';
+      if (splits.length > 1 && splits[i] === max) li.className = 'worst';
+      const sp = format(splits[i]), tot = format(laps[i]);
+      li.innerHTML = `<span class="label">랩 ${i + 1}</span>
+        <span><span class="split">${sp.main}${sp.cs}</span><span class="total">${tot.main}${tot.cs}</span></span>`;
+      lapList.appendChild(li);
+    }
+  }
+
+  function toggle() {
+    if (running) {
+      elapsed += performance.now() - startTime;
+      running = false;
+      cancelAnimationFrame(rafId);
+      render();
+    } else {
+      startTime = performance.now();
+      running = true;
+      render();
+    }
+    updateButtons();
+  }
+
+  function lapOrReset() {
+    if (running) lap(); else reset();
+  }
+
+  function lap() {
+    if (!running) return;
+    laps.push(now());
+    renderLaps();
+    cheer();
+  }
+
+  function reset() {
+    if (running) return;
+    elapsed = 0; laps = [];
+    render(); renderLaps(); updateButtons();
+  }
+
+  function updateButtons() {
+    startBtn.textContent = running ? '정지' : (elapsed ? '계속' : '시작');
+    startBtn.classList.toggle('running', running);
+    lapBtn.textContent = running || !elapsed ? '랩' : '초기화';
+    lapBtn.disabled = !running && !elapsed;
+  }
+
+  // 바닷속 물방울 (스톱워치가 돌 때 더 많이)
+  const ocean = $('ocean');
+  function spawnBubble() {
+    const b = document.createElement('span');
+    b.className = 'bubble';
+    const size = 6 + Math.random() * 16;
+    const dur = 6 + Math.random() * 6;
+    b.style.width = b.style.height = size + 'px';
+    b.style.left = Math.random() * 100 + '%';
+    b.style.animationDuration = dur + 's';
+    ocean.appendChild(b);
+    setTimeout(() => b.remove(), dur * 1000);
+  }
+  (function bubbleLoop() {
+    spawnBubble();
+    setTimeout(bubbleLoop, running ? 250 : 700);
+  })();
+
+  startBtn.addEventListener('click', toggle);
+  lapBtn.addEventListener('click', lapOrReset);
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.key === 'l' || e.key === 'L') lap();
+    else if (e.key === 'r' || e.key === 'R') reset();
+  });
+</script>
+</body>
+</html>
