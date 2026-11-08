@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>세 가지 신호</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #050a1c; overflow: hidden; }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; }
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; background: rgba(5, 10, 28, .55); color: #f8e7a8;
+    font-family: "Noto Sans KR", "Malgun Gothic", sans-serif; text-align: center; padding: 16px;
+  }
+  #overlay h1 { font-family: "Black Han Sans", "Malgun Gothic", sans-serif; font-weight: 400; font-size: clamp(32px, 6vw, 64px); margin: 0; color: #f9d648; letter-spacing: 2px; }
+  #overlay p { margin: 0; color: #cfdcf5; font-size: clamp(14px, 2vw, 18px); }
+  #overlay button {
+    margin-top: 8px; padding: 14px 34px; font-size: 18px; font-weight: 700; font-family: inherit;
+    border: 2px solid #f9d648; border-radius: 999px; background: #f9d648; color: #10204a; cursor: pointer;
+  }
+  #overlay button:hover { background: #ffe680; }
+  #overlay.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="1920" height="1080"></canvas></div>
+<div id="overlay">
+  <h1>세 가지 신호</h1>
+  <p>피자 9개 매장 · 80개월 실적 분석 · 30초</p>
+  <button id="play">▶ 재생 (소리 켜짐)</button>
+  <p id="voiceInfo" style="font-size:13px;opacity:.7"></p>
+</div>
+
+<script>
+(() => {
+  const W = 1920, H = 1080, DURATION = 30;
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const playBtn = document.getElementById('play');
+  const voiceInfo = document.getElementById('voiceInfo');
+
+  function fit() {
+    const s = Math.min(innerWidth / W, innerHeight / H);
+    cv.style.width = W * s + 'px';
+    cv.style.height = H * s + 'px';
+  }
+  addEventListener('resize', fit); fit();
+
+  // ───────── 대본 · 타임라인 ─────────
+  const SCENES = [
+    { t: 0.2,  label: '',            say: '피자 아홉 개 매장. 데이터가 말하는 세 가지.' },
+    { t: 4.0,  label: '01  성장의 질', say: '첫째. 매출은 이십사 퍼센트 늘었지만, 주문은 그대로. 객단가만 올랐습니다.' },
+    { t: 12.0, label: '02  채널',     say: '둘째. 자사앱은 여섯 배 커졌지만, 배달앱 수수료는 한 푼도 줄지 않았습니다.' },
+    { t: 20.0, label: '03  사람',     say: '셋째. 하위 두 매장의 인력을 안정시키면, 오천만 원을 되찾습니다.' },
+    { t: 28.0, label: '',            say: '고객. 채널. 사람.' },
+  ];
+
+  // c: 팔레트 (y 노랑, w 크림, o 주황, b 하늘)
+  const BEATS = [
+    { t: 0.3,  lines: [{ s: '피자 9개 매장', z: 80, y: 390, c: 'w' }, { s: '세 가지 신호', z: 230, y: 610, c: 'y' }],
+      cap: '피자 9개 매장 · 80개월 실적이 말하는 세 가지' },
+    { t: 4.0,  lines: [{ s: '매출', z: 120, y: 350, c: 'w' }, { s: '+24%', z: 330, y: 640, c: 'y' }],
+      cap: '2022 → 2026 (1~8월)  매출 60.1억 → 74.7억' },
+    { t: 6.6,  lines: [{ s: '그런데 주문은', z: 120, y: 350, c: 'w' }, { s: '+1%', z: 330, y: 640, c: 'b' }],
+      cap: '주문 24.7만 → 25.0만 건 · 신규고객 · 재방문율도 제자리' },
+    { t: 9.2,  lines: [{ s: '객단가만', z: 160, y: 400, c: 'w' }, { s: '올랐다', z: 250, y: 660, c: 'y' }],
+      cap: '객단가 +23% — 가격 변경 기록이 없다. 원인부터 검증하라' },
+    { t: 12.0, lines: [{ s: '자사앱', z: 130, y: 350, c: 'w' }, { s: '×6', z: 360, y: 660, c: 'y' }],
+      cap: '자사앱 주문 비중 5.6% → 31.3%' },
+    { t: 14.6, lines: [{ s: '배달앱 수수료는', z: 120, y: 370, c: 'w' }, { s: '그대로', z: 270, y: 660, c: 'o' }],
+      cap: '배달 주문은 여전히 배달앱 3사 경유 · 건당 수수료 +31%' },
+    { t: 17.2, lines: [{ s: '쿠폰 9.5억을', z: 130, y: 370, c: 'w' }, { s: '배달 전환에', z: 220, y: 650, c: 'y' }],
+      cap: '성과 기준을 ‘앱 비중’에서 ‘배달앱에서 옮겨온 주문’으로' },
+    { t: 20.0, lines: [{ s: '하위 2개 매장 이익률', z: 110, y: 370, c: 'w' }, { s: '13% vs 17%', z: 230, y: 650, c: 'o' }],
+      cap: '충장로점 13.2% · 연동점 14.2%  vs  체인 평균 17.4%' },
+    { t: 22.6, lines: [{ s: '원인은', z: 120, y: 350, c: 'w' }, { s: '사람', z: 360, y: 660, c: 'y' }],
+      cap: '점주 교체 후 정규직 이탈 · 정규직 1명 ↔ 5명 들쭉날쭉' },
+    { t: 25.2, lines: [{ s: '바로잡으면', z: 130, y: 350, c: 'w' }, { s: '+5천만 원', z: 270, y: 650, c: 'y' }],
+      cap: '두 매장이 체인 평균만 돼도 8개월 이익 +5,000만 원' },
+    { t: 28.0, lines: [{ s: '고객 · 채널 · 사람', z: 170, y: 520, c: 'y' }],
+      cap: '주문을 늘리고, 앱을 바꾸고, 사람을 지켜라' },
+  ];
+
+  const PAL = {
+    y: ['#f9d648', '#f4c430', '#ffe680', '#f0b23a', '#fff1a8'],
+    w: ['#fff6d6', '#f3e3b0', '#ead9a8', '#fffbe9'],
+    o: ['#f08a3c', '#e86a2c', '#f6a04d', '#ffbf6b'],
+    b: ['#9cc9f0', '#cfe6fb', '#7fb2e5', '#e4f1ff'],
+  };
+  const SKY = ['#16307a', '#1e3a8a', '#2b59c3', '#3a6cc9', '#4a7bd1', '#7fa7e0', '#b8d0ef'];
+  const MOONC = ['#f9d648', '#f4c430', '#ffe680', '#e8b53a', '#fff1a8'];
+  const GROUND = ['#0d2a4a', '#123a55', '#1d4d5e', '#2b5848', '#14263f'];
+
+  // ───────── 고흐풍 소용돌이 흐름장 ─────────
+  const VORT = [
+    { x: 760,  y: 300, r: 230, s: 1 },
+    { x: 1130, y: 380, r: 190, s: -1 },
+    { x: 330,  y: 230, r: 160, s: 1 },
+    { x: 1450, y: 560, r: 170, s: 1 },
+  ];
+  const MOON = { x: 1650, y: 185 };
+  const STARS = [[380, 150, 1], [1040, 130, .8], [1330, 250, .9], [600, 470, .7], [210, 520, .8], [1720, 480, .7], [900, 760, .6]];
+
+  function flow(x, y, t) {
+    let ax = 1.0, ay = 0.2 * Math.sin(x * 0.004 + t * 0.35);
+    for (const v of VORT) {
+      const dx = x - v.x, dy = y - v.y, d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 1;
+      const f = Math.exp(-d2 / (2 * v.r * v.r)) * 2.6 * v.s;
+      ax += -dy / d * f; ay += dx / d * f;
+    }
+    const mdx = x - MOON.x, mdy = y - MOON.y, md2 = mdx * mdx + mdy * mdy, md = Math.sqrt(md2) + 1;
+    const mf = Math.exp(-md2 / (2 * 170 * 170)) * 2.2;
+    ax += -mdy / md * mf; ay += mdx / md * mf;
+    if (y > 860) { ay *= 0.3; ay += 0.5 * Math.sin(x * 0.008 + t * 0.6); }
+    else ay += 0.3 * Math.sin(x * 0.006 + y * 0.004 + t * 0.5);
+    return [ax, ay];
+  }
+
+  // 배경 붓터치 입자
+  const STROKES = [];
+  function spawnStroke(s) {
+    s.x = Math.random() * W; s.y = Math.random() * H;
+    s.life = 60 + Math.random() * 160;
+    const md = Math.hypot(s.x - MOON.x, s.y - MOON.y);
+    let pal = SKY;
+    if (md < 230) pal = MOONC;
+    else if (s.y > 870) pal = GROUND;
+    else {
+      for (const [sx, sy] of STARS) if (Math.hypot(s.x - sx, s.y - sy) < 55) { pal = MOONC; break; }
+    }
+    s.col = pal[Math.random() * pal.length | 0];
+    s.w = 2.4 + Math.random() * 2.6;
+  }
+  for (let i = 0; i < 2200; i++) { const s = {}; spawnStroke(s); STROKES.push(s); }
+
+  // ───────── 점묘 텍스트 샘플링 ─────────
+  const off = document.createElement('canvas'); off.width = W; off.height = H;
+  const oc = off.getContext('2d', { willReadFrequently: true });
+  const FONT = z => `${z}px "Black Han Sans", "Malgun Gothic", sans-serif`;
+
+  function sampleLine(line) {
+    let z = line.z;
+    oc.font = FONT(z);
+    const w = oc.measureText(line.s).width;
+    if (w > 1720) { z = Math.floor(z * 1720 / w); oc.font = FONT(z); }
+    oc.clearRect(0, 0, W, H);
+    oc.fillStyle = '#fff'; oc.textAlign = 'center'; oc.textBaseline = 'middle';
+    oc.fillText(line.s, W / 2, line.y);
+    const step = Math.max(4, Math.round(z / 30));
+    const y0 = Math.max(0, Math.floor(line.y - z * 0.8)), y1 = Math.min(H, Math.ceil(line.y + z * 0.8));
+    const data = oc.getImageData(0, y0, W, y1 - y0).data;
+    const pal = PAL[line.c], pts = [];
+    let row = 0;
+    for (let y = 0; y < y1 - y0; y += step, row++) {
+      for (let x = (row % 2) * (step >> 1); x < W; x += step) {
+        if (data[(y * W + x) * 4 + 3] > 140) {
+          pts.push({
+            x: x + (Math.random() - .5) * step * .35,
+            y: y + y0 + (Math.random() - .5) * step * .35,
+            r: step * 0.58 * (0.85 + Math.random() * 0.4),
+            col: pal[Math.random() * pal.length | 0],
+          });
+        }
+      }
+    }
+    return pts;
+  }
+
+  // ───────── 텍스트 입자 ─────────
+  const P = [];
+  const dormant = [];
+  function getParticle() {
+    const p = dormant.pop();
+    if (p) { p.x = Math.random() * W; p.y = Math.random() * H; p.a = 0; return p; }
+    const n = { x: Math.random() * W, y: Math.random() * H, vx: 0, vy: 0, a: 0, state: 0 };
+    P.push(n); return n;
+  }
+
+  function activate(bi) {
+    const beat = BEATS[bi], bt = beat.t;
+    const released = [];
+    for (const p of P) if (p.state === 1) {
+      p.state = 2;
+      p.vx = (Math.random() - .5) * 10; p.vy = (Math.random() - .5) * 10 - 2;
+      released.push(p);
+    }
+    for (let i = released.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [released[i], released[j]] = [released[j], released[i]]; }
+    let k = 0;
+    beat.lines.forEach((ln, li) => {
+      for (const pt of ln.pts) {
+        const p = k < released.length ? released[k++] : getParticle();
+        p.state = 1; p.tx = pt.x; p.ty = pt.y; p.r = pt.r; p.col = pt.col;
+        p.delay = bt + li * 0.38 + (pt.x / W) * 0.32 + Math.random() * 0.12;
+        p.ph = Math.random() * 6.283;
+      }
+    });
+  }
+
+  // ───────── 음성 ─────────
+  let voice = null;
+  function pickVoice() {
+    const vs = speechSynthesis.getVoices();
+    const ko = vs.filter(v => /^ko/i.test(v.lang));
+    voice = ko.find(v => /Natural|Neural|Online/i.test(v.name)) || ko.find(v => /Google/i.test(v.name)) || ko[0] || null;
+    voiceInfo.textContent = voice ? `음성: ${voice.name}` : (vs.length ? '한국어 음성이 없어 기본 음성으로 읽습니다' : '');
+  }
+  if ('speechSynthesis' in window) { speechSynthesis.onvoiceschanged = pickVoice; pickVoice(); }
+  let muted = false;
+  function say(text) {
+    if (muted || !('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    setTimeout(() => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR'; if (voice) u.voice = voice;
+      u.rate = 1.08; u.pitch = 1.0; u.volume = 1;
+      speechSynthesis.speak(u);
+    }, 30);
+  }
+
+  // ───────── 재생 상태 ─────────
+  let t0 = null, beatIdx = -1, sceneIdx = -1, ended = false, ready = false;
+
+  function start(offset = 0) {
+    for (const p of P) if (p.state === 1) { p.state = 2; p.vx = (Math.random() - .5) * 10; p.vy = (Math.random() - .5) * 10; }
+    t0 = performance.now() - offset * 1000;
+    beatIdx = -1; sceneIdx = -1; ended = false;
+    // 건너뛰기 시작이면 지난 장면 음성은 생략
+    while (sceneIdx + 1 < SCENES.length && SCENES[sceneIdx + 1].t < offset - 0.5) sceneIdx++;
+    overlay.classList.add('hidden');
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (!ready) return;
+    muted = false;
+    start(0);
+  });
+  addEventListener('keydown', e => { if (e.code === 'Space' && ready && (t0 === null || ended)) { e.preventDefault(); playBtn.click(); } });
+
+  // ───────── 그리기 ─────────
+  function drawHalo(cx, cy, t, rings, base, gap, scale) {
+    for (let k = 0; k < rings; k++) {
+      const r = (base + k * gap) * scale, n = Math.max(8, Math.round(2 * Math.PI * r / 10));
+      const rot = t * 0.25 * (k % 2 ? 1 : -1) + k;
+      ctx.fillStyle = MOONC[k % MOONC.length];
+      ctx.globalAlpha = 0.9 - k * 0.12;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const a = rot + i / n * 6.283, rr = r + Math.sin(i * 1.7 + t * 2) * 2.5;
+        const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr, d = 2.6 - k * 0.25;
+        ctx.moveTo(x + d, y); ctx.arc(x, y, d, 0, 6.283);
+      }
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawBackground(t, dt) {
+    const f60 = dt * 60;
+    ctx.fillStyle = `rgba(12, 30, 84, ${1 - Math.pow(0.94, f60)})`;   // 프레임 속도와 무관한 잔상
+    ctx.fillRect(0, 0, W, H);
+
+    // 붓터치
+    ctx.lineCap = 'round';
+    const byCol = new Map();
+    for (const s of STROKES) {
+      const f = flow(s.x, s.y, t), m = Math.hypot(f[0], f[1]) || 1;
+      const sp = 1.9 * Math.min(f60, 6);
+      const px = s.x, py = s.y;
+      s.x += f[0] / m * sp; s.y += f[1] / m * sp;
+      if (--s.life < 0 || s.x < -10 || s.x > W + 10 || s.y < -10 || s.y > H + 10) { spawnStroke(s); continue; }
+      let arr = byCol.get(s.col + '|' + (s.w > 3.6 ? 1 : 0));
+      if (!arr) { arr = []; byCol.set(s.col + '|' + (s.w > 3.6 ? 1 : 0), arr); }
+      arr.push(px, py, s.x, s.y);
+    }
+    for (const [key, arr] of byCol) {
+      const [col, thick] = key.split('|');
+      ctx.strokeStyle = col; ctx.lineWidth = thick === '1' ? 4.4 : 3;
+      ctx.beginPath();
+      for (let i = 0; i < arr.length; i += 4) { ctx.moveTo(arr[i], arr[i + 1]); ctx.lineTo(arr[i + 2], arr[i + 3]); }
+      ctx.stroke();
+    }
+
+    // 글자 뒤 소용돌이를 살짝 가라앉혀 메시지가 먼저 읽히게
+    const vg = ctx.createRadialGradient(W / 2, 520, 120, W / 2, 520, 900);
+    vg.addColorStop(0, `rgba(8, 18, 52, ${0.32 * Math.min(1, f60)})`);
+    vg.addColorStop(1, 'rgba(8, 18, 52, 0)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+
+    // 달과 별의 동심원 점무리
+    drawHalo(MOON.x, MOON.y, t, 6, 34, 20, 1);
+    ctx.fillStyle = '#fff4b8';
+    ctx.beginPath(); ctx.arc(MOON.x, MOON.y, 26, 0, 6.283); ctx.fill();
+    for (const [sx, sy, sc] of STARS) {
+      const pulse = 1 + 0.08 * Math.sin(t * 2.2 + sx);
+      drawHalo(sx, sy, t, 3, 10, 9, sc * pulse);
+      ctx.fillStyle = '#fffbe0';
+      ctx.beginPath(); ctx.arc(sx, sy, 5 * sc, 0, 6.283); ctx.fill();
+    }
+  }
+
+  function drawText(t, dt, scale, tl) {   // t: 화면 시계(흔들림용), tl: 타임라인 시간(등장 지연용)
+    const k = 1 - Math.pow(0.0012, dt);
+    const f60 = Math.min(dt * 60, 6), damp = 1 - Math.pow(0.95, dt * 60);
+    const batch = new Map();
+    for (const p of P) {
+      if (p.state === 0) continue;
+      if (p.state === 1) {
+        if (tl < p.delay) {
+          const f = flow(p.x, p.y, t); p.x += f[0] * 1.4 * f60; p.y += f[1] * 1.4 * f60;
+          p.a = Math.min(1, p.a + dt * 1.2);
+        } else {
+          const tx = W / 2 + (p.tx - W / 2) * scale + Math.sin(t * 1.7 + p.ph) * 0.9;
+          const ty = H / 2 + (p.ty - H / 2) * scale + Math.cos(t * 1.3 + p.ph) * 0.9;
+          p.x += (tx - p.x) * k; p.y += (ty - p.y) * k;
+          p.a = Math.min(1, p.a + dt * 3);
+        }
+      } else {
+        const f = flow(p.x, p.y, t);
+        p.vx += (f[0] * 3.2 - p.vx) * damp; p.vy += (f[1] * 3.2 - p.vy) * damp;
+        p.x += p.vx * f60; p.y += p.vy * f60;
+        p.a -= dt * 0.75;
+        if (p.a <= 0) { p.state = 0; p.a = 0; dormant.push(p); continue; }
+      }
+      if (p.a >= 0.98) {
+        let arr = batch.get(p.col); if (!arr) { arr = []; batch.set(p.col, arr); } arr.push(p);
+      } else {
+        ctx.globalAlpha = Math.max(0, p.a); ctx.fillStyle = p.col;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    for (const [col, arr] of batch) {
+      ctx.fillStyle = col; ctx.beginPath();
+      for (const p of arr) { ctx.moveTo(p.x + p.r, p.y); ctx.arc(p.x, p.y, p.r, 0, 6.283); }
+      ctx.fill();
+    }
+  }
+
+  function drawChrome(t) {
+    // 자막 띠
+    const g = ctx.createLinearGradient(0, H - 190, 0, H);
+    g.addColorStop(0, 'rgba(5,10,28,0)'); g.addColorStop(1, 'rgba(5,10,28,0.85)');
+    ctx.fillStyle = g; ctx.fillRect(0, H - 190, W, 190);
+
+    if (beatIdx >= 0) {
+      const b = BEATS[beatIdx], next = BEATS[beatIdx + 1];
+      const end = next ? next.t : DURATION;
+      const a = Math.min(1, (t - b.t - 0.25) / 0.4) * Math.min(1, (end - t) / 0.3);
+      if (a > 0) {
+        ctx.globalAlpha = a;
+        ctx.font = '700 40px "Noto Sans KR", "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(5,10,28,.85)';
+        ctx.strokeText(b.cap, W / 2, H - 92);
+        ctx.fillStyle = '#fdf3d0';
+        ctx.fillText(b.cap, W / 2, H - 92);
+        ctx.globalAlpha = 1;
+      }
+    }
+    if (sceneIdx >= 0 && SCENES[sceneIdx].label) {
+      const sc = SCENES[sceneIdx], next = SCENES[sceneIdx + 1];
+      const a = Math.min(1, (t - sc.t) / 0.5) * Math.min(1, ((next ? next.t : DURATION) - t) / 0.4);
+      const [num, ...rest] = sc.label.split('  ');
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.font = '96px "Black Han Sans", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = '#f9d648'; ctx.fillText(num, 90, 150);
+      ctx.font = '700 34px "Noto Sans KR", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = '#e9f0ff'; ctx.fillText(rest.join(' '), 220, 142);
+      ctx.globalAlpha = 1;
+    }
+    // 진행 막대
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(0, H - 6, W, 6);
+    ctx.fillStyle = '#f9d648'; ctx.fillRect(0, H - 6, W * Math.min(1, t / DURATION), 6);
+  }
+
+  // ───────── 루프 ─────────
+  let last = performance.now();
+  ctx.fillStyle = '#0c1e54'; ctx.fillRect(0, 0, W, H);
+  window.__preview = s => { muted = true; start(s); };   // 미리보기용 (음성 없음)
+
+  let simMode = false;
+  function loop(now) { if (!simMode) frame(now); requestAnimationFrame(loop); }
+  // 검증용: start초 지점부터 secs초를 60fps로 정확히 계산한 뒤 화면을 멈춤 (음성 없음)
+  window.__sim = (startAt, secs) => {
+    simMode = true; muted = true; start(startAt);
+    let fake = performance.now(); last = fake; t0 = fake - startAt * 1000;
+    for (let i = 0; i < Math.round(secs * 60); i++) { fake += 1000 / 60; frame(fake); }
+    return window.__perf;
+  };
+  window.__resume = () => { simMode = false; last = performance.now(); };
+
+  function frame(now) {
+    const dt = Math.min(0.3, (now - last) / 1000); last = now;
+    const clock = now / 1000;
+    const t = t0 === null ? -1 : (now - t0) / 1000;
+
+    const q0 = performance.now();
+    drawBackground(clock, dt);
+    const q1 = performance.now();
+
+    if (t >= 0 && !ended) {
+      while (beatIdx + 1 < BEATS.length && t >= BEATS[beatIdx + 1].t) { beatIdx++; activate(beatIdx); }
+      while (sceneIdx + 1 < SCENES.length && t >= SCENES[sceneIdx + 1].t) { sceneIdx++; say(SCENES[sceneIdx].say); }
+      if (t >= DURATION) {
+        ended = true;
+        playBtn.textContent = '↻ 다시 보기';
+        overlay.querySelector('h1').textContent = '고객 · 채널 · 사람';
+        overlay.classList.remove('hidden');
+      }
+    }
+    let scale = 1;
+    if (beatIdx >= 0) {
+      const b = BEATS[beatIdx], end = BEATS[beatIdx + 1] ? BEATS[beatIdx + 1].t : DURATION;
+      const u = Math.min(1, Math.max(0, ((ended ? DURATION : t) - b.t) / (end - b.t)));
+      scale = 1 + 0.045 * u;           // 천천히 밀고 들어가는 줌
+    }
+    const q2 = performance.now();
+    drawText(clock, dt, scale, t < 0 ? -1 : (ended ? DURATION : t));
+    const q3 = performance.now();
+    if (t >= 0) drawChrome(Math.min(t, DURATION));
+    if (simMode) window.__perf = { t: +t.toFixed(2), beat: beatIdx, dt: +dt.toFixed(3), bg: q1 - q0, text: q3 - q2, chrome: performance.now() - q3, particles: P.length,
+      active: P.filter(p => p.state === 1).length,
+      settled: P.filter(p => p.state === 1 && Math.hypot(p.x - (W / 2 + (p.tx - W / 2) * scale), p.y - (H / 2 + (p.ty - H / 2) * scale)) < 6).length,
+      released: P.filter(p => p.state === 2).length };
+  }
+
+  // ───────── 폰트 준비 후 시작 ─────────
+  // 한글 웹폰트는 글자 범위별로 나뉘어 내려오므로, 영상에 쓰는 모든 글자를 미리 불러온다
+  const bigText = BEATS.flatMap(b => b.lines.map(l => l.s)).join('') + SCENES.map(s => s.label).join('');
+  const capText = BEATS.map(b => b.cap).join('') + SCENES.map(s => s.label).join('');
+  const fontsReady = Promise.race([
+    Promise.all([
+      document.fonts.load('100px "Black Han Sans"', bigText),
+      document.fonts.load('700 40px "Noto Sans KR"', capText),
+    ]),
+    new Promise(r => setTimeout(r, 5000)),
+  ]);
+  fontsReady.then(() => {
+    for (const b of BEATS) for (const ln of b.lines) ln.pts = sampleLine(ln);
+    ready = true;
+    requestAnimationFrame(loop);
+    const qs = new URLSearchParams(location.search);
+    const seek = parseFloat(qs.get('t'));
+    if (!isNaN(seek)) { muted = true; start(seek); }   // 미리보기용: ?t=초 (음성 없음)
+    const sim = qs.get('sim');                           // 검증용: ?sim=시작초,진행초
+    if (sim) {
+      const [a, b] = sim.split(',').map(Number); const r = window.__sim(a, b);
+      if (qs.get('debug')) { ctx.font = '28px monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(JSON.stringify(r), 20, 40); ctx.fillText('fontsOK=' + document.fonts.check('100px "Black Han Sans"'), 20, 80); }
+    }
+  });
+})();
+</script>
+</body>
+</html>
